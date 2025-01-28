@@ -11,8 +11,67 @@
   <div class="container">
     <h1>📈 투자 계산기</h1>
 
-    <!-- 계산 입력 섹션 -->
-    <!-- [이전 코드와 동일하므로 중복 제거] -->
+    <!-- 샤프 비율 계산 -->
+    <div class="form-group">
+      <h2>샤프 비율 계산</h2>
+      <label for="Rp">포트폴리오 기대 수익률 (Rp):</label>
+      <input type="number" id="Rp" placeholder="예: 10">
+      <div class="variable-description">포트폴리오의 예상 수익률입니다.</div>
+      <label for="Rf">무위험 수익률 (Rf):</label>
+      <input type="number" id="Rf" placeholder="예: 2">
+      <div class="variable-description">무위험 자산(예: 국채)의 수익률입니다.</div>
+      <label for="sigmaP">포트폴리오 표준편차 (σp):</label>
+      <input type="number" id="sigmaP" placeholder="예: 15">
+      <div class="variable-description">포트폴리오의 변동성(위험)을 나타냅니다.</div>
+      <button onclick="calculateSharpeRatio()">계산</button>
+      <div class="error" id="sharpeError"></div>
+      <div class="result" id="sharpeResult"></div>
+    </div>
+
+    <!-- 효용성 함수 계산 -->
+    <div class="form-group">
+      <h2>효용성 함수 계산</h2>
+      <label for="expectedReturn">기대 수익률 (E(Rp)):</label>
+      <input type="number" id="expectedReturn" placeholder="예: 10">
+      <div class="variable-description">포트폴리오의 예상 수익률입니다.</div>
+      <label for="lambda">위험 회피 계수 (λ):</label>
+      <input type="number" id="lambda" placeholder="예: 2">
+      <div class="variable-description">투자자의 위험 회피 성향을 나타냅니다. 값이 클수록 위험을 회피합니다.</div>
+      <label for="variance">포트폴리오 분산 (σp²):</label>
+      <input type="number" id="variance" placeholder="예: 225">
+      <div class="variable-description">포트폴리오의 변동성(위험)의 제곱입니다.</div>
+      <button onclick="calculateUtility()">계산</button>
+      <div class="error" id="utilityError"></div>
+      <div class="result" id="utilityResult"></div>
+    </div>
+
+    <!-- 캘리 공식 계산 -->
+    <div class="form-group">
+      <h2>캘리 공식 계산</h2>
+      <label for="b">순 배당률 (b):</label>
+      <input type="number" id="b" placeholder="예: 2">
+      <div class="variable-description">승리 시 얻는 금액 대비 손실 시 잃는 금액의 비율입니다.</div>
+      <label for="p">승리 확률 (p):</label>
+      <input type="number" id="p" placeholder="예: 0.6">
+      <div class="variable-description">투자에서 승리할 확률입니다.</div>
+      <label for="q">손실 확률 (q):</label>
+      <input type="number" id="q" placeholder="예: 0.4">
+      <div class="variable-description">투자에서 손실할 확률입니다. (q = 1 - p)</div>
+      <button onclick="calculateKelly()">계산</button>
+      <div class="error" id="kellyError"></div>
+      <div class="result" id="kellyResult"></div>
+    </div>
+
+    <!-- 하프 캘리 계산 -->
+    <div class="form-group">
+      <h2>하프 캘리 계산</h2>
+      <label for="kellyFraction">캘리 공식 결과 (f*):</label>
+      <input type="number" id="kellyFraction" placeholder="예: 0.4">
+      <div class="variable-description">캘리 공식으로 계산된 최적 투자 비중입니다.</div>
+      <button onclick="calculateHalfKelly()">계산</button>
+      <div class="error" id="halfKellyError"></div>
+      <div class="result" id="halfKellyResult"></div>
+    </div>
 
     <!-- 차트 표시 -->
     <div class="chart-container">
