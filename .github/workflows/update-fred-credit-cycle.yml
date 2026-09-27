@@ -8,20 +8,58 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download FRED data
+
+      - name: Download and merge FRED data
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p credit-cycle/data
+          END="$(date -u +%Y-%m-%d)"
+          START_UPDATE="$(date -u -d '120 days ago' +%Y-%m-%d)"
+
+          # First run: download the complete history needed by the dashboard.
+          # Later runs: download only a recent overlap window and merge it with
+          # the already stored history. The overlap also handles recent revisions.
           for s in BAA AAA GS10 GS2 DBAA DAAA DGS10 DGS2; do
-            curl -L --fail --retry 3 "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s&cosd=1976-06-01&coed=$(date -u +%Y-%m-%d)" -o "credit-cycle/data/$s.csv"
+            target="credit-cycle/data/$s.csv"
+            tmp="$(mktemp)"
+
+            if [ -s "$target" ]; then
+              curl -L --fail --retry 3 --retry-delay 2 \
+                "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s&cosd=$START_UPDATE&coed=$END" \
+                -o "$tmp"
+
+              {
+                head -n 1 "$target"
+                tail -n +2 "$target"
+                tail -n +2 "$tmp"
+              } | awk -F',' 'NR==1 {print; next} !seen[$1]++' | sort -t',' -k1,1 > "$target.new"
+              mv "$target.new" "$target"
+            else
+              curl -L --fail --retry 3 --retry-delay 2 \
+                "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s&cosd=1976-06-01&coed=$END" \
+                -o "$target"
+            fi
+
+            rm -f "$tmp"
           done
+
       - name: Commit updated data
+        shell: bash
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add credit-cycle/data
-          git diff --cached --quiet || (git commit -m "Update FRED credit-cycle data" && git push)
+          if ! git diff --cached --quiet; then
+            git commit -m "Update FRED credit-cycle data"
+            git push
+          else
+            echo "No FRED data changes."
+          fi
