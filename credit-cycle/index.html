@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미국 금리·신용 사이클 탐색기</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#d9dee8;--accent:#315efb}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR","Segoe UI",sans-serif}
+.wrap{max-width:1450px;margin:0 auto;padding:24px}
+h1{margin:0 0 6px;font-size:26px} .sub{color:var(--muted);margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(20,30,50,.04);margin-bottom:16px}
+.controls{display:grid;grid-template-columns:1.2fr .8fr .8fr .8fr .8fr auto;gap:12px;align-items:end}
+label{font-size:12px;font-weight:700;color:#475467;display:block;margin-bottom:6px}
+select,input,button{width:100%;height:40px;border:1px solid #cbd3df;border-radius:9px;background:#fff;padding:0 11px;font-size:14px}
+button{background:var(--accent);color:white;border:none;font-weight:700;cursor:pointer}
+button.secondary{background:#eef2ff;color:#2444ad}
+button:hover{filter:brightness(.97)}
+.status{margin-top:12px;font-size:13px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chart{height:470px}
+.metric{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}
+.metric div{background:#f8fafc;border:1px solid #e5e9f0;border-radius:10px;padding:10px 14px;min-width:150px}
+.metric b{display:block;font-size:18px;margin-top:3px}
+.note{font-size:12px;line-height:1.6;color:var(--muted)}
+.warn{color:#9a6700;background:#fff8e1;border:1px solid #f3d98b;padding:10px 12px;border-radius:9px;margin-top:12px}
+@media(max-width:1000px){.controls{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.chart{height:430px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>미국 금리·신용 사이클 탐색기</h1>
+  <div class="sub">V2: Baa−10Y × 10Y/2Y &nbsp; | &nbsp; V4: Baa/Aaa × 10Y/2Y</div>
+  <div class="card">
+    <div class="controls">
+      <div><label>버전</label><select id="version"><option value="v2">V2 — Baa−10Y × 10Y/2Y</option><option value="v4">V4 — Baa/Aaa × 10Y/2Y</option></select></div>
+      <div><label>자료 빈도</label><select id="freq"><option value="daily">일</option><option value="monthly" selected>월</option><option value="annual">연</option></select></div>
+      <div><label>시작일</label><input id="start" type="date" value="1976-06-01"></div>
+      <div><label>종료일</label><input id="end" type="date" value="2026-08-31"></div>
+      <div><label>궤적 점 크기</label><input id="size" type="number" min="3" max="18" value="7"></div>
+      <button id="load">데이터 불러오기</button>
+    </div>
+    <div class="status" id="status">초기 데이터를 불러오는 중입니다…</div>
+    <div class="warn" id="warning" style="display:none"></div>
+  </div>
+  <div class="grid">
+    <div class="card"><div id="xchart" class="chart"></div></div>
+    <div class="card"><div id="ychart" class="chart"></div></div>
+  </div>
+  <div class="card"><div id="phase" class="chart" style="height:650px"></div></div>
+  <div class="card">
+    <div class="metric" id="metrics"></div>
+    <p class="note">데이터 출처: Federal Reserve Bank of St. Louis, FRED. BAA/AAA는 Moody’s Seasoned Corporate Bond Yield, DGS10/DGS2는 미 국채 10년/2년 Constant Maturity Yield입니다. 일간 모드에서는 DBAA/DAAA(1986년 이후)를 사용하고, 월간 모드에서는 BAA/AAA(1919년 이후)와 월간 GS10/GS2를 사용합니다. 따라서 V2/V4에서 모든 변수를 동시에 사용할 수 있는 최대 기간은 월간 기준 1976년 6월 이후입니다.</p>
+    <p class="note">FRED 원자료: <a href="https://fred.stlouisfed.org/series/BAA" target="_blank">BAA</a> · <a href="https://fred.stlouisfed.org/series/AAA" target="_blank">AAA</a> · <a href="https://fred.stlouisfed.org/series/DGS10" target="_blank">DGS10</a> · <a href="https://fred.stlouisfed.org/series/DGS2" target="_blank">DGS2</a></p>
+  </div>
+</div>
+<script>
+const PROXY = "https://fred.libhack.so/v0/observations";
+const cfg = {daily:{baa:"DBAA",aaa:"DAAA",y10:"DGS10",y2:"DGS2",min:"1986-01-02"},monthly:{baa:"BAA",aaa:"AAA",y10:"GS10",y2:"GS2",min:"1976-06-01"}};
+let lastData=[];
+function fmtDate(s){return new Date(s+"T00:00:00").toLocaleDateString("ko-KR",{year:"numeric",month:"short",day:"numeric"});}
+function mean(a){a=a.filter(Number.isFinite);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;}
+function aggregate(rows,mode){if(mode==="daily")return rows;const m=new Map();for(const r of rows){const d=new Date(r.date+"T00:00:00");const key=mode==="monthly"?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`:`${d.getFullYear()}`;if(!m.has(key))m.set(key,{date:key,baa:[],aaa:[],y10:[],y2:[]});const z=m.get(key);for(const k of ["baa","aaa","y10","y2"])if(Number.isFinite(r[k]))z[k].push(r[k]);}return[...m.values()].map(z=>({date:z.date+"-01",baa:mean(z.baa),aaa:mean(z.aaa),y10:mean(z.y10),y2:mean(z.y2)}));}
+async function fetchSeries(id,start,end){const url=`${PROXY}?series_id=${id}&observation_start=${start}&observation_end=${end}`;const res=await fetch(url);if(!res.ok)throw new Error(`${id}: HTTP ${res.status}`);return await res.json();}
+async function loadData(){const freq=document.getElementById("freq").value,start=document.getElementById("start").value,end=document.getElementById("end").value,status=document.getElementById("status"),warning=document.getElementById("warning");warning.style.display="none";status.textContent="FRED 자료를 불러오는 중…";try{const c=freq==="annual"?cfg.monthly:cfg[freq],actualStart=start<c.min?c.min:start;if(freq==="daily"&&start<c.min){warning.textContent=`일간 자료는 Baa/AAA의 일간 시계열이 시작되는 1986-01-02 이후만 가능합니다. 시작일을 ${c.min}으로 자동 조정했습니다.`;warning.style.display="block";}const ids=[["baa",c.baa],["aaa",c.aaa],["y10",c.y10],["y2",c.y2]],all=await Promise.all(ids.map(async([k,id])=>[k,await fetchSeries(id,actualStart,end)])),maps={};for(const[k,arr]of all)maps[k]=new Map(arr.map(x=>[x.date,Number(x.value)]));const dates=[...new Set(all.flatMap(([_,arr])=>arr.map(x=>x.date)))].sort();let rows=dates.map(date=>({date,baa:maps.baa.get(date),aaa:maps.aaa.get(date),y10:maps.y10.get(date),y2:maps.y2.get(date)})).filter(r=>[r.baa,r.aaa,r.y10,r.y2].every(Number.isFinite));rows=aggregate(rows,freq);rows=rows.filter(r=>r.date>=start&&r.date<=end);if(!rows.length)throw new Error("선택한 기간에 네 지표가 모두 존재하는 관측치가 없습니다.");lastData=rows;render(rows);status.textContent=`${rows.length.toLocaleString()}개 관측치 · ${fmtDate(rows[0].date)} ~ ${fmtDate(rows[rows.length-1].date)} · ${freq==="daily"?"일":freq==="monthly"?"월":"연"} 기준`;}catch(e){status.textContent="데이터를 불러오지 못했습니다.";warning.textContent=`오류: ${e.message}. 인터넷 연결을 확인하거나, FRED 원자료를 내려받아 이 앱의 데이터 연결 방식을 변경해 사용할 수 있습니다.`;warning.style.display="block";}}
+function render(rows){const v=document.getElementById("version").value,sz=Number(document.getElementById("size").value)||7,x=rows.map(r=>v==="v2"?r.baa-r.y10:r.baa/r.aaa),y=rows.map(r=>r.y10/r.y2),dates=rows.map(r=>r.date),xTitle=v==="v2"?"Baa − 10Y Treasury (percentage points)":"Baa / Aaa corporate yield ratio",phaseTitle=v==="v2"?"V2 — Baa−10Y × 10Y/2Y":"V4 — Baa/Aaa × 10Y/2Y";
+Plotly.react("xchart",[{x:dates,y:x,mode:"lines",line:{width:2},name:xTitle,hovertemplate:"%{x}<br>%{y:.3f}<extra></extra>"}],{title:"가로축 지표의 시간 변화",margin:{t:55,l:65,r:25,b:55},xaxis:{title:"기간"},yaxis:{title:xTitle},hovermode:"x unified"},{responsive:true,displaylogo:false});
+Plotly.react("ychart",[{x:dates,y:y,mode:"lines",line:{width:2},name:"10Y / 2Y",hovertemplate:"%{x}<br>%{y:.3f}<extra></extra>"}],{title:"세로축 지표의 시간 변화",margin:{t:55,l:65,r:25,b:55},xaxis:{title:"기간"},yaxis:{title:"10Y / 2Y Treasury yield ratio"},hovermode:"x unified"},{responsive:true,displaylogo:false});
+Plotly.react("phase",[{x:x,y:y,mode:"lines+markers",line:{width:1.2},marker:{size:sz},text:dates,customdata:dates,hovertemplate:"날짜: %{customdata}<br>"+xTitle+": %{x:.3f}<br>10Y/2Y: %{y:.3f}<extra></extra>"}],{title:phaseTitle+" — 시간순 궤적",margin:{t:60,l:75,r:30,b:70},xaxis:{title:xTitle,zeroline:true},yaxis:{title:"10Y / 2Y Treasury yield ratio",zeroline:true},hovermode:"closest"},{responsive:true,displaylogo:false});
+const first=rows[0],last=rows[rows.length-1],xv=x[x.length-1],yv=y[y.length-1];document.getElementById("metrics").innerHTML=`<div><span>관측치</span><b>${rows.length.toLocaleString()}</b></div><div><span>현재 X</span><b>${xv.toFixed(3)}</b></div><div><span>현재 Y</span><b>${yv.toFixed(3)}</b></div><div><span>시작</span><b>${fmtDate(first.date)}</b></div><div><span>최근</span><b>${fmtDate(last.date)}</b></div>`;}
+document.getElementById("load").addEventListener("click",loadData);document.getElementById("version").addEventListener("change",()=>lastData.length&&render(lastData));document.getElementById("size").addEventListener("input",()=>lastData.length&&render(lastData));document.getElementById("freq").addEventListener("change",()=>{const f=document.getElementById("freq").value;if(f==="daily"&&document.getElementById("start").value<cfg.daily.min)document.getElementById("start").value=cfg.daily.min;});loadData();
+</script>
+</body>
+</html>
