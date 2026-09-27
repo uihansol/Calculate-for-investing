@@ -56,25 +56,25 @@ button:hover{filter:brightness(.97)}
   </div>
 </div>
 <script>
-const FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv";
+const DATA_BASE = "./data/";
 const cfg = {daily:{baa:"DBAA",aaa:"DAAA",y10:"DGS10",y2:"DGS2",min:"1986-01-02"},monthly:{baa:"BAA",aaa:"AAA",y10:"GS10",y2:"GS2",min:"1976-06-01"}};
 let lastData=[];
+
 function fmtDate(s){return new Date(s+"T00:00:00").toLocaleDateString("ko-KR",{year:"numeric",month:"short",day:"numeric"});}
 function mean(a){a=a.filter(Number.isFinite);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;}
 function aggregate(rows,mode){if(mode==="daily")return rows;const m=new Map();for(const r of rows){const d=new Date(r.date+"T00:00:00");const key=mode==="monthly"?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`:`${d.getFullYear()}`;if(!m.has(key))m.set(key,{date:key,baa:[],aaa:[],y10:[],y2:[]});const z=m.get(key);for(const k of ["baa","aaa","y10","y2"])if(Number.isFinite(r[k]))z[k].push(r[k]);}return[...m.values()].map(z=>({date:z.date+"-01",baa:mean(z.baa),aaa:mean(z.aaa),y10:mean(z.y10),y2:mean(z.y2)}));}
 async function fetchSeries(id,start,end){
-  const url=`${FRED_CSV}?id=${encodeURIComponent(id)}&cosd=${start}&coed=${end}`;
-  const res=await fetch(url,{cache:"no-store"});
-  if(!res.ok)throw new Error(`${id}: HTTP ${res.status}`);
+  const res=await fetch(DATA_BASE+id+".csv?ts="+Date.now(),{cache:"no-store"});
+  if(!res.ok)throw new Error(id+": 저장된 데이터 파일을 읽을 수 없습니다 (HTTP "+res.status+").");
   const text=await res.text();
-  const lines=text.trim().split(/\\r?\\n/);
-  if(lines.length<2)throw new Error(`${id}: FRED 자료가 없습니다.`);
+  const lines=text.trim().split(/\r?\n/);
+  if(lines.length<2)throw new Error(id+": 데이터 파일이 비어 있습니다.");
   const headers=lines[0].split(",");
   const valueIndex=headers.indexOf(id);
-  if(valueIndex<0)throw new Error(`${id}: CSV 열을 찾을 수 없습니다.`);
-  return lines.slice(1).map(line=>{const cols=line.split(",");const value=Number(cols[valueIndex]);return {date:cols[0],value:Number.isFinite(value)?value:null};}).filter(x=>x.value!==null);
+  if(valueIndex<0)throw new Error(id+": CSV 열을 찾을 수 없습니다.");
+  return lines.slice(1).map(line=>{const cols=line.split(",");const value=Number(cols[valueIndex]);return {date:cols[0],value:Number.isFinite(value)?value:null};}).filter(x=>x.date>=start&&x.date<=end&&x.value!==null);
 }
-async function loadData(){const freq=document.getElementById("freq").value,start=document.getElementById("start").value,end=document.getElementById("end").value,status=document.getElementById("status"),warning=document.getElementById("warning");warning.style.display="none";status.textContent="FRED 자료를 불러오는 중…";try{const c=freq==="annual"?cfg.monthly:cfg[freq],actualStart=start<c.min?c.min:start;if(freq==="daily"&&start<c.min){warning.textContent=`일간 자료는 Baa/AAA의 일간 시계열이 시작되는 1986-01-02 이후만 가능합니다. 시작일을 ${c.min}으로 자동 조정했습니다.`;warning.style.display="block";}const ids=[["baa",c.baa],["aaa",c.aaa],["y10",c.y10],["y2",c.y2]],all=await Promise.all(ids.map(async([k,id])=>[k,await fetchSeries(id,actualStart,end)])),maps={};for(const[k,arr]of all)maps[k]=new Map(arr.map(x=>[x.date,Number(x.value)]));const dates=[...new Set(all.flatMap(([_,arr])=>arr.map(x=>x.date)))].sort();let rows=dates.map(date=>({date,baa:maps.baa.get(date),aaa:maps.aaa.get(date),y10:maps.y10.get(date),y2:maps.y2.get(date)})).filter(r=>[r.baa,r.aaa,r.y10,r.y2].every(Number.isFinite));rows=aggregate(rows,freq);rows=rows.filter(r=>r.date>=start&&r.date<=end);if(!rows.length)throw new Error("선택한 기간에 네 지표가 모두 존재하는 관측치가 없습니다.");lastData=rows;render(rows);status.textContent=`${rows.length.toLocaleString()}개 관측치 · ${fmtDate(rows[0].date)} ~ ${fmtDate(rows[rows.length-1].date)} · ${freq==="daily"?"일":freq==="monthly"?"월":"연"} 기준`;}catch(e){status.textContent="데이터를 불러오지 못했습니다.";warning.textContent=`오류: ${e.message}. FRED 원자료에 직접 연결하지 못했습니다. 잠시 후 다시 시도하거나 브라우저의 인터넷 연결을 확인해 주세요.`;warning.style.display="block";}}
+async function loadData(){const freq=document.getElementById("freq").value,start=document.getElementById("start").value,end=document.getElementById("end").value,status=document.getElementById("status"),warning=document.getElementById("warning");warning.style.display="none";status.textContent="저장된 FRED 자료를 불러오는 중…";try{const c=freq==="annual"?cfg.monthly:cfg[freq],actualStart=start<c.min?c.min:start;if(freq==="daily"&&start<c.min){warning.textContent=`일간 자료는 Baa/AAA의 일간 시계열이 시작되는 1986-01-02 이후만 가능합니다. 시작일을 ${c.min}으로 자동 조정했습니다.`;warning.style.display="block";}const ids=[["baa",c.baa],["aaa",c.aaa],["y10",c.y10],["y2",c.y2]],all=await Promise.all(ids.map(async([k,id])=>[k,await fetchSeries(id,actualStart,end)])),maps={};for(const[k,arr]of all)maps[k]=new Map(arr.map(x=>[x.date,Number(x.value)]));const dates=[...new Set(all.flatMap(([_,arr])=>arr.map(x=>x.date)))].sort();let rows=dates.map(date=>({date,baa:maps.baa.get(date),aaa:maps.aaa.get(date),y10:maps.y10.get(date),y2:maps.y2.get(date)})).filter(r=>[r.baa,r.aaa,r.y10,r.y2].every(Number.isFinite));rows=aggregate(rows,freq);rows=rows.filter(r=>r.date>=start&&r.date<=end);if(!rows.length)throw new Error("선택한 기간에 네 지표가 모두 존재하는 관측치가 없습니다.");lastData=rows;render(rows);status.textContent=`${rows.length.toLocaleString()}개 관측치 · ${fmtDate(rows[0].date)} ~ ${fmtDate(rows[rows.length-1].date)} · ${freq==="daily"?"일":freq==="monthly"?"월":"연"} 기준`;}catch(e){status.textContent="데이터를 불러오지 못했습니다.";warning.textContent=`오류: ${e.message}`;warning.style.display="block";}}
 function render(rows){const v=document.getElementById("version").value,sz=Number(document.getElementById("size").value)||7,x=rows.map(r=>v==="v2"?r.baa-r.y10:r.baa/r.aaa),y=rows.map(r=>r.y10/r.y2),dates=rows.map(r=>r.date),xTitle=v==="v2"?"Baa − 10Y Treasury (percentage points)":"Baa / Aaa corporate yield ratio",phaseTitle=v==="v2"?"V2 — Baa−10Y × 10Y/2Y":"V4 — Baa/Aaa × 10Y/2Y";
 Plotly.react("xchart",[{x:dates,y:x,mode:"lines",line:{width:2},name:xTitle,hovertemplate:"%{x}<br>%{y:.3f}<extra></extra>"}],{title:"가로축 지표의 시간 변화",margin:{t:55,l:65,r:25,b:55},xaxis:{title:"기간"},yaxis:{title:xTitle},hovermode:"x unified"},{responsive:true,displaylogo:false});
 Plotly.react("ychart",[{x:dates,y:y,mode:"lines",line:{width:2},name:"10Y / 2Y",hovertemplate:"%{x}<br>%{y:.3f}<extra></extra>"}],{title:"세로축 지표의 시간 변화",margin:{t:55,l:65,r:25,b:55},xaxis:{title:"기간"},yaxis:{title:"10Y / 2Y Treasury yield ratio"},hovermode:"x unified"},{responsive:true,displaylogo:false});
